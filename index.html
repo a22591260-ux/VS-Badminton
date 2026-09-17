@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>羽球雙打樹狀圖系統 (當日賽事版)</title>
+  <style>
+    :root {
+      --primary: #1b5e20;
+      --primary-light: #2e7d32;
+      --accent: #f57c00;
+      --bg: #e8f5e9;
+      --card-bg: #ffffff;
+      --text: #212121;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 15px; max-width: 1600px; margin: 0 auto; }
+    h1 { text-align: center; color: var(--primary); margin-bottom: 15px; font-size: 1.8rem; }
+
+    /* 設定區 */
+    .setup-card { background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    .setup-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px; }
+    @media (max-width: 900px) { .setup-grid { grid-template-columns: 1fr; } }
+
+    textarea { width: 100%; height: 130px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95rem; resize: vertical; }
+    
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-weight: bold; margin-bottom: 4px; color: var(--primary); font-size: 0.9rem; }
+    .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; }
+
+    .btn { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.95rem; transition: background 0.2s; }
+    .btn:hover { background: var(--primary-light); }
+    .btn-danger { background: #c62828; }
+    .btn-danger:hover { background: #b71c1c; }
+    .btn-secondary { background: #546e7a; }
+    .btn-secondary:hover { background: #37474f; }
+
+    /* 存檔狀態提示欄 */
+    .storage-status { display: flex; justify-content: space-between; align-items: center; background: #e8f5e9; padding: 8px 15px; border-radius: 6px; border: 1px solid #a5d6a7; margin-bottom: 15px; font-size: 0.85rem; color: #2e7d32; font-weight: bold; }
+
+    /* 樹狀對戰圖容器 */
+    .bracket-wrapper { position: relative; overflow-x: auto; padding: 20px 0; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 25px; }
+    .svg-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+
+    .bracket-container { display: flex; gap: 60px; min-width: 1000px; padding: 20px; position: relative; z-index: 2; }
+    .round-column { display: flex; flex-direction: column; justify-content: space-around; min-width: 250px; }
+    .round-title { text-align: center; font-weight: bold; background: var(--primary); color: white; padding: 6px; border-radius: 6px; margin-bottom: 15px; }
+
+    /* 對戰卡片 */
+    .match-box { background: white; border: 2px solid #cfd8dc; border-radius: 8px; margin: 12px 0; padding: 8px 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); position: relative; }
+    .match-box.active { border-color: var(--accent); box-shadow: 0 0 8px rgba(245, 124, 0, 0.3); }
+    .match-box.third-place-box { border-color: #8d6e63; background: #efebe9; }
+    .match-box.hidden-bye-box { visibility: hidden; opacity: 0; pointer-events: none; height: 65px; }
+
+    .date-badge { font-size: 0.75rem; background: #eceff1; color: #455a64; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-bottom: 4px; display: inline-block; }
+    .court-badge { font-size: 0.75rem; background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; float: right; font-weight: bold; }
+
+    /* 隊員選項與勝負點擊 */
+    .team-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; padding: 8px 10px; border-radius: 6px; background: #f8f9fa; border: 1px solid #e9ecef; cursor: pointer; transition: all 0.2s; user-select: none; }
+    .team-row:hover:not(.disabled) { background: #e8f5e9; border-color: #a5d6a7; }
+    
+    .team-row.winner { background: #2e7d32 !important; color: white !important; font-weight: bold; border-color: #1b5e20 !important; }
+    .team-row.loser { opacity: 0.5; background: #eee; }
+    .team-row.bye { color: #888; font-style: italic; cursor: default; }
+    .team-row.disabled { cursor: default; }
+
+    .team-name { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-tag { font-size: 0.75rem; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
+    .winner .status-tag { background: #fff; color: #2e7d32; }
+
+    /* 頒獎區 */
+    .champion-box { text-align: center; background: #fff8e1; border: 2px solid #ffe082; padding: 15px; border-radius: 12px; margin-bottom: 20px; font-size: 1.2rem; font-weight: bold; color: #f57f17; display: none; }
+    .winner-badge { margin: 0 15px; display: inline-block; }
+
+    /* 一覽表與排行榜卡片 */
+    .table-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    .table-title { font-size: 1.2rem; font-weight: bold; color: var(--primary); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+    th { background: #f1f8e9; color: var(--primary); font-weight: bold; }
+    tr:hover { background: #f9f9f9; }
+    
+    .tag-completed { background: #e8f5e9; color: #2e7d32; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
+    .tag-pending { background: #fff3e0; color: #ef6c00; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; }
+    .tag-bye { background: #f5f5f5; color: #9e9e9e; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; }
+
+    .filter-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-weight: bold; color: var(--primary); }
+    .rank-num { font-weight: bold; color: var(--accent); font-size: 1rem; }
+  </style>
+</head>
+<body>
+
+  <h1>🏸 羽球雙打樹狀圖系統</h1>
+
+  <!-- 設定區 -->
+  <div class="setup-card">
+    <div class="storage-status">
+      <span id="saveStatusText">🟢 系統運作中（點擊勝負自動儲存）</span>
+      <div>
+        <button class="btn btn-secondary" onclick="saveToLocalStorage()" style="padding: 3px 8px; font-size: 0.8rem;">💾 強制存檔</button>
+        <button class="btn btn-danger" onclick="clearData()" style="padding: 3px 8px; font-size: 0.8rem;">🗑️ 清空重置</button>
+      </div>
+    </div>
+
+    <div class="setup-grid">
+      <div>
+        <label style="font-weight:bold; color:var(--primary);">📋 貼入雙打名單：</label>
+        <p style="font-size:0.8rem; color:#666; margin-bottom:5px;">使用 <code>/</code> 或 <code>+</code> 分隔（例：<code>張三 / 李四</code>）</p>
+        <textarea id="playerListInput" placeholder="王小明 / 陳大天&#10;林小華 / 張阿美&#10;劉德華 / 郭富城&#10;周傑倫 / 蔡依林&#10;隊伍E1 / 隊伍E2&#10;隊伍F1 / 隊伍F2"></textarea>
+      </div>
+
+      <div>
+        <div class="form-group">
+          <label>📅 當天比賽日期：</label>
+          <input type="date" id="matchDateInput" onchange="updateMatchDates()">
+        </div>
+
+        <div class="form-group">
+          <label>🏟️ 可用場地數量：</label>
+          <input type="number" id="courtCountInput" value="3" min="1" max="20">
+        </div>
+
+        <div class="form-group">
+          <label>🎲 抽籤方式：</label>
+          <select id="drawTypeSelect">
+            <option value="random">隨機打亂對戰順序</option>
+            <option value="sequential">依貼入順序排列</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+        <button class="btn" onclick="buildTournament()" style="width:100%; height: 45px;">🚀 重新生成樹狀對戰圖</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 頒獎宣告區 -->
+  <div id="championDisplay" class="champion-box">
+    <span class="winner-badge">🏆 總冠軍：<span id="championName">未定</span></span>
+    <span class="winner-badge" id="thirdPlaceDisplay" style="display:none;">🥉 季軍：<span id="thirdPlaceName">未定</span></span>
+  </div>
+
+  <!-- 樹狀圖與 SVG 容器 -->
+  <div class="bracket-wrapper" id="bracketWrapper">
+    <svg class="svg-canvas" id="svgCanvas"></svg>
+    <div id="bracketContainer" class="bracket-container"></div>
+  </div>
+
+  <!-- 對戰歷史一覽表 -->
+  <div class="table-card">
+    <div class="table-title">
+      <div>
+        <span>📅 對戰紀錄表：</span>
+        <select id="dateFilterSelect" class="filter-select" onchange="renderHistoryTable()">
+          <option value="ALL">顯示全部日期</option>
+        </select>
+      </div>
+      <button class="btn btn-secondary" onclick="window.print()" style="font-size:0.85rem; padding:5px 12px;">🖨️ 列印 / 匯出紀錄表</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>比賽日期</th>
+          <th>輪次</th>
+          <th>對決</th>
+          <th>場地</th>
+          <th>隊伍 1</th>
+          <th>隊伍 2</th>
+          <th>狀態 / 勝出者</th>
+        </tr>
+      </thead>
+      <tbody id="matchHistoryTable">
+        <tr><td colspan="7" style="text-align:center; color:#999;">尚未生成賽事資料</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 即時戰績排行榜 -->
+  <div class="table-card">
+    <div class="table-title">
+      <div>
+        <span>🏆 隊伍戰績排行榜：</span>
+        <select id="leaderboardDateFilter" class="filter-select" onchange="renderLeaderboard()">
+          <option value="ALL">顯示全部日期</option>
+        </select>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>排名</th>
+          <th>隊伍名稱</th>
+          <th>勝場 (W)</th>
+          <th>敗場 (L)</th>
+          <th>總實戰場次</th>
+          <th>勝率</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboardTable">
+        <tr><td colspan="6" style="text-align:center; color:#999;">尚未生成賽事資料</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    let bracketData = [];
+    let thirdPlaceMatch = null;
+    let courtCount = 3;
+    let registeredTeams = [];
+
+    // 預設當天日期 (YYYY-MM-DD)
+    const todayStr = new Date().toISOString().split('T')[0];
+    document.getElementById('matchDateInput').value = todayStr;
+
+    window.onload = function() {
+      loadFromLocalStorage();
+    };
+
+    function buildTournament() {
+      const rawText = document.getElementById('playerListInput').value.trim();
+      courtCount = parseInt(document.getElementById('courtCountInput').value) || 1;
+      const currentDate = document.getElementById('matchDateInput').value || todayStr;
+      const isRandom = document.getElementById('drawTypeSelect').value === 'random';
+
+      if (!rawText) {
+        alert('請先貼入參賽名單！');
+        return;
+      }
+
+      let lines = rawText.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+      let teams = [];
+
+      let hasPartnerFormat = lines.some(l => l.includes('+') || l.includes('/'));
+
+      if (!hasPartnerFormat && lines.length >= 2) {
+        let singles = [...lines];
+        if (isRandom) singles.sort(() => Math.random() - 0.5);
+        for (let i = 0; i < singles.length; i += 2) {
+          if (i + 1 < singles.length) teams.push(`${singles[i]} / ${singles[i+1]}`);
+          else teams.push(`${singles[i]} (單人)`);
+        }
+      } else {
+        teams = lines.map(l => l.replace('+', '/'));
+        if (isRandom) teams.sort(() => Math.random() - 0.5);
+      }
+
+      if (teams.length < 2) {
+        alert('雙打組合不足 2 隊，無法進行比賽！');
+        return;
+      }
+
+      registeredTeams = [...teams];
+
+      let pow2 = 1;
+      while (pow2 < teams.length) pow2 *= 2;
+      let totalByes = pow2 - teams.length;
+
+      let paddedTeams = new Array(pow2).fill(null);
+      let teamIdx = 0;
+
+      for (let i = 0; i < pow2; i++) {
+        if (i % 2 === 1 && totalByes > 0 && teamIdx < teams.length) {
+          paddedTeams[i] = 'BYE (輪空)';
+          totalByes--;
+        } else if (teamIdx < teams.length) {
+          paddedTeams[i] = teams[teamIdx++];
+        } else {
+          paddedTeams[i] = 'BYE (輪空)';
+        }
+      }
+
+      // 初始化樹狀對戰（日期均設為當前選擇日期）
+      bracketData = [];
+      let round1Matches = [];
+
+      for (let i = 0; i < pow2; i += 2) {
+        round1Matches.push({
+          id: `R0_M${i/2}`,
+          team1: paddedTeams[i], team2: paddedTeams[i+1],
+          winner: null, loser: null, dateStr: currentDate
+        });
+      }
+      bracketData.push(round1Matches);
+
+      let currentMatchCount = pow2 / 4;
+      let rIdx = 1;
+      while (currentMatchCount >= 1) {
+        let roundMatches = [];
+        for (let i = 0; i < currentMatchCount; i++) {
+          roundMatches.push({
+            id: `R${rIdx}_M${i}`,
+            team1: '待定雙打', team2: '待定雙打',
+            winner: null, loser: null, dateStr: currentDate
+          });
+        }
+        bracketData.push(roundMatches);
+        currentMatchCount /= 2;
+        rIdx++;
+      }
+
+      if (bracketData.length >= 2) {
+        thirdPlaceMatch = {
+          id: 'M_THIRD',
+          team1: '準決賽 L1 待定', team2: '準決賽 L2 待定',
+          winner: null, loser: null, dateStr: currentDate
+        };
+      } else {
+        thirdPlaceMatch = null;
+      }
+
+      updateDateFilters();
+      propagateWinners();
+      renderAll();
+      saveToLocalStorage();
+    }
+
+    // 當修改日期時，同步更新全部比賽的日期
+    function updateMatchDates() {
+      const newDate = document.getElementById('matchDateInput').value || todayStr;
+      
+      bracketData.forEach(round => {
+        round.forEach(m => {
+          m.dateStr = newDate;
+        });
+      });
+
+      if (thirdPlaceMatch) {
+        thirdPlaceMatch.dateStr = newDate;
+      }
+
+      updateDateFilters();
+      renderAll();
+      saveToLocalStorage();
+    }
+
+    function updateDateFilters() {
+      const historyFilter = document.getElementById('dateFilterSelect');
+      const leaderboardFilter = document.getElementById('leaderboardDateFilter');
+
+      // 收集目前發生的日期（通常即當前日期）
+      let dates = new Set();
+      bracketData.forEach(r => r.forEach(m => dates.add(m.dateStr)));
+      if (thirdPlaceMatch) dates.add(thirdPlaceMatch.dateStr);
+
+      let optionsHtml = '<option value="ALL">顯示全部日期</option>';
+      dates.forEach(d => {
+        optionsHtml += `<option value="${d}">${d}</option>`;
+      });
+
+      historyFilter.innerHTML = optionsHtml;
+      leaderboardFilter.innerHTML = optionsHtml;
+      
+      // 預設切換為最新設定的日期
+      const currentDate = document.getElementById('matchDateInput').value;
+      if (dates.has(currentDate)) {
+        historyFilter.value = currentDate;
+        leaderboardFilter.value = currentDate;
+      }
+    }
+
+    function propagateWinners() {
+      for (let r = 0; r < bracketData.length; r++) {
+        let currentRound = bracketData[r];
+
+        currentRound.forEach((m) => {
+          if (m.team1 === 'BYE (輪空)' && m.team2 === 'BYE (輪空)') {
+            m.winner = 'BYE (輪空)';
+            m.loser = 'BYE (輪空)';
+          } else if (m.team2 === 'BYE (輪空)' && m.team1 !== 'BYE (輪空)' && !m.team1.includes('待定')) {
+            m.winner = m.team1;
+            m.loser = 'BYE (輪空)';
+          } else if (m.team1 === 'BYE (輪空)' && m.team2 !== 'BYE (輪空)' && !m.team2.includes('待定')) {
+            m.winner = m.team2;
+            m.loser = 'BYE (輪空)';
+          }
+
+          if (r < bracketData.length - 1) {
+            let nextRound = bracketData[r + 1];
+            let nextMatchIdx = Math.floor(currentRound.indexOf(m) / 2);
+            let isTeam1Position = (currentRound.indexOf(m) % 2 === 0);
+
+            if (m.winner) {
+              if (isTeam1Position) nextRound[nextMatchIdx].team1 = m.winner;
+              else nextRound[nextMatchIdx].team2 = m.winner;
+            } else {
+              if (isTeam1Position) nextRound[nextMatchIdx].team1 = '待定雙打';
+              else nextRound[nextMatchIdx].team2 = '待定雙打';
+            }
+          }
+        });
+      }
+
+      if (bracketData.length >= 2 && thirdPlaceMatch) {
+        let semiRound = bracketData[bracketData.length - 2];
+        if (semiRound.length === 2) {
+          let m1 = semiRound[0];
+          let m2 = semiRound[1];
+
+          if (m1.loser) thirdPlaceMatch.team1 = m1.loser;
+          else thirdPlaceMatch.team1 = '準決賽 L1 待定';
+
+          if (m2.loser) thirdPlaceMatch.team2 = m2.loser;
+          else thirdPlaceMatch.team2 = '準決賽 L2 待定';
+
+          if (thirdPlaceMatch.team1 === 'BYE (輪空)' && thirdPlaceMatch.team2 !== 'BYE (輪空)' && !thirdPlaceMatch.team2.includes('待定')) {
+            thirdPlaceMatch.winner = thirdPlaceMatch.team2;
+          } else if (thirdPlaceMatch.team2 === 'BYE (輪空)' && thirdPlaceMatch.team1 !== 'BYE (輪空)' && !thirdPlaceMatch.team1.includes('待定')) {
+            thirdPlaceMatch.winner = thirdPlaceMatch.team1;
+          }
+        }
+      }
+
+      let finalMatch = bracketData[bracketData.length - 1][0];
+      let displayBox = false;
+
+      if (finalMatch && finalMatch.winner && finalMatch.winner !== 'BYE (輪空)') {
+        document.getElementById('championName').innerText = finalMatch.winner;
+        displayBox = true;
+      }
+
+      if (thirdPlaceMatch && thirdPlaceMatch.winner && thirdPlaceMatch.winner !== 'BYE (輪空)') {
+        document.getElementById('thirdPlaceDisplay').style.display = 'inline-block';
+        document.getElementById('thirdPlaceName').innerText = thirdPlaceMatch.winner;
+        displayBox = true;
+      } else {
+        document.getElementById('thirdPlaceDisplay').style.display = 'none';
+      }
+
+      document.getElementById('championDisplay').style.display = displayBox ? 'block' : 'none';
+    }
+
+    function toggleWinner(rIdx, mIdx, selectedTeam) {
+      if (selectedTeam.includes('待定') || selectedTeam.includes('BYE')) return;
+      let match = bracketData[rIdx][mIdx];
+
+      if (match.winner === selectedTeam) {
+        match.winner = null;
+        match.loser = null;
+      } else {
+        match.winner = selectedTeam;
+        match.loser = (selectedTeam === match.team1) ? match.team2 : match.team1;
+      }
+
+      propagateWinners();
+      renderAll();
+      saveToLocalStorage();
+    }
+
+    function toggleThirdPlaceWinner(selectedTeam) {
+      if (!thirdPlaceMatch || selectedTeam.includes('待定') || selectedTeam.includes('BYE')) return;
+
+      if (thirdPlaceMatch.winner === selectedTeam) {
+        thirdPlaceMatch.winner = null;
+        thirdPlaceMatch.loser = null;
+      } else {
+        thirdPlaceMatch.winner = selectedTeam;
+        thirdPlaceMatch.loser = (selectedTeam === thirdPlaceMatch.team1) ? thirdPlaceMatch.team2 : thirdPlaceMatch.team1;
+      }
+
+      propagateWinners();
+      renderAll();
+      saveToLocalStorage();
+    }
+
+    function renderAll() {
+      renderBracket();
+      renderHistoryTable();
+      renderLeaderboard();
+    }
+
+    function renderBracket() {
+      const container = document.getElementById('bracketContainer');
+      container.innerHTML = '';
+      let courtAssignmentCounter = 1;
+
+      bracketData.forEach((roundMatches, rIdx) => {
+        const roundCol = document.createElement('div');
+        roundCol.className = 'round-column';
+
+        let titleText = `第 ${rIdx + 1} 輪`;
+        if (rIdx === bracketData.length - 1) titleText = '🏆 雙打總決賽';
+        else if (rIdx === bracketData.length - 2) titleText = '準決賽 (4強)';
+
+        roundCol.innerHTML = `<div class="round-title">${titleText}</div>`;
+
+        roundMatches.forEach((m, mIdx) => {
+          const matchBox = document.createElement('div');
+          matchBox.className = 'match-box';
+          matchBox.id = `box_R${rIdx}_M${mIdx}`;
+
+          if (m.team1 === 'BYE (輪空)' && m.team2 === 'BYE (輪空)') {
+            matchBox.classList.add('hidden-bye-box');
+          }
+
+          let isReady = !m.team1.includes('待定') && !m.team2.includes('待定') && !m.team1.includes('BYE') && !m.team2.includes('BYE') && !m.winner;
+          let courtBadgeHtml = '';
+
+          if (isReady) {
+            let courtNo = ((courtAssignmentCounter - 1) % courtCount) + 1;
+            courtBadgeHtml = `<span class="court-badge">場地 ${courtNo}</span>`;
+            m.courtNo = `場地 ${courtNo}`;
+            courtAssignmentCounter++;
+            matchBox.classList.add('active');
+          } else {
+            m.courtNo = '-';
+          }
+
+          let isT1Winner = (m.winner === m.team1 && !m.team1.includes('待定') && !m.team1.includes('BYE'));
+          let isT2Winner = (m.winner === m.team2 && !m.team2.includes('待定') && !m.team2.includes('BYE'));
+          let isT1Loser = (m.loser === m.team1);
+          let isT2Loser = (m.loser === m.team2);
+
+          let t1Disabled = m.team1.includes('待定') || m.team1.includes('BYE');
+          let t2Disabled = m.team2.includes('待定') || m.team2.includes('BYE');
+
+          matchBox.innerHTML = `
+            ${courtBadgeHtml}
+            <div>
+              <span class="date-badge">📅 ${m.dateStr}</span>
+              <span style="font-size:0.75rem; color:#888;">對決 ${mIdx + 1}</span>
+            </div>
+            
+            <div class="team-row ${isT1Winner ? 'winner' : ''} ${isT1Loser ? 'loser' : ''} ${m.team1.includes('BYE') ? 'bye' : ''} ${t1Disabled ? 'disabled' : ''}" 
+                 onclick="toggleWinner(${rIdx}, ${mIdx}, '${escapeQuotes(m.team1)}')">
+              <span class="team-name">👥 ${m.team1}</span>
+              ${isT1Winner ? '<span class="status-tag">勝出</span>' : ''}
+            </div>
+
+            <div class="team-row ${isT2Winner ? 'winner' : ''} ${isT2Loser ? 'loser' : ''} ${m.team2.includes('BYE') ? 'bye' : ''} ${t2Disabled ? 'disabled' : ''}" 
+                 onclick="toggleWinner(${rIdx}, ${mIdx}, '${escapeQuotes(m.team2)}')">
+              <span class="team-name">👥 ${m.team2}</span>
+              ${isT2Winner ? '<span class="status-tag">勝出</span>' : ''}
+            </div>
+          `;
+
+          roundCol.appendChild(matchBox);
+        });
+
+        // 季軍賽
+        if (rIdx === bracketData.length - 1 && thirdPlaceMatch) {
+          const thirdBox = document.createElement('div');
+          thirdBox.className = 'match-box third-place-box';
+          thirdBox.id = 'box_THIRD';
+
+          let isThirdReady = !thirdPlaceMatch.team1.includes('待定') && !thirdPlaceMatch.team2.includes('待定') && !thirdPlaceMatch.team1.includes('BYE') && !thirdPlaceMatch.team2.includes('BYE') && !thirdPlaceMatch.winner;
+          let thirdCourtBadgeHtml = '';
+
+          if (isThirdReady) {
+            let courtNo = ((courtAssignmentCounter - 1) % courtCount) + 1;
+            thirdCourtBadgeHtml = `<span class="court-badge">場地 ${courtNo}</span>`;
+            thirdPlaceMatch.courtNo = `場地 ${courtNo}`;
+            courtAssignmentCounter++;
+            thirdBox.classList.add('active');
+          } else {
+            thirdPlaceMatch.courtNo = '-';
+          }
+
+          let isT1Winner = (thirdPlaceMatch.winner === thirdPlaceMatch.team1 && !thirdPlaceMatch.team1.includes('待定') && !thirdPlaceMatch.team1.includes('BYE'));
+          let isT2Winner = (thirdPlaceMatch.winner === thirdPlaceMatch.team2 && !thirdPlaceMatch.team2.includes('待定') && !thirdPlaceMatch.team2.includes('BYE'));
+          let isT1Loser = (thirdPlaceMatch.loser === thirdPlaceMatch.team1);
+          let isT2Loser = (thirdPlaceMatch.loser === thirdPlaceMatch.team2);
+
+          let t1Disabled = thirdPlaceMatch.team1.includes('待定') || thirdPlaceMatch.team1.includes('BYE');
+          let t2Disabled = thirdPlaceMatch.team2.includes('待定') || thirdPlaceMatch.team2.includes('BYE');
+
+          thirdBox.innerHTML = `
+            ${thirdCourtBadgeHtml}
+            <div>
+              <span class="date-badge">📅 ${thirdPlaceMatch.dateStr}</span>
+              <span style="font-size:0.75rem; color:#8d6e63; font-weight:bold;">🥉 季軍爭奪戰</span>
+            </div>
+            
+            <div class="team-row ${isT1Winner ? 'winner' : ''} ${isT1Loser ? 'loser' : ''} ${thirdPlaceMatch.team1.includes('BYE') ? 'bye' : ''} ${t1Disabled ? 'disabled' : ''}" 
+                 onclick="toggleThirdPlaceWinner('${escapeQuotes(thirdPlaceMatch.team1)}')">
+              <span class="team-name">👥 ${thirdPlaceMatch.team1}</span>
+              ${isT1Winner ? '<span class="status-tag">勝出</span>' : ''}
+            </div>
+
+            <div class="team-row ${isT2Winner ? 'winner' : ''} ${isT2Loser ? 'loser' : ''} ${thirdPlaceMatch.team2.includes('BYE') ? 'bye' : ''} ${t2Disabled ? 'disabled' : ''}" 
+                 onclick="toggleThirdPlaceWinner('${escapeQuotes(thirdPlaceMatch.team2)}')">
+              <span class="team-name">👥 ${thirdPlaceMatch.team2}</span>
+              ${isT2Winner ? '<span class="status-tag">勝出</span>' : ''}
+            </div>
+          `;
+
+          roundCol.appendChild(thirdBox);
+        }
+
+        container.appendChild(roundCol);
+      });
+
+      setTimeout(drawSvgLines, 50);
+    }
+
+    // 渲染對戰歷史一覽表
+    function renderHistoryTable() {
+      const tbody = document.getElementById('matchHistoryTable');
+      const selectedDate = document.getElementById('dateFilterSelect').value;
+      tbody.innerHTML = '';
+
+      let hasMatch = false;
+
+      bracketData.forEach((roundMatches, rIdx) => {
+        let roundName = `第 ${rIdx + 1} 輪`;
+        if (rIdx === bracketData.length - 1) roundName = '🏆 總決賽';
+        else if (rIdx === bracketData.length - 2) roundName = '準決賽 (4強)';
+
+        roundMatches.forEach((m, mIdx) => {
+          if (m.team1 === 'BYE (輪空)' && m.team2 === 'BYE (輪空)') return;
+          if (selectedDate !== 'ALL' && m.dateStr !== selectedDate) return;
+
+          hasMatch = true;
+          const tr = document.createElement('tr');
+          let statusHtml = '';
+
+          if (m.team1.includes('BYE') || m.team2.includes('BYE')) {
+            let realTeam = m.team1.includes('BYE') ? m.team2 : m.team1;
+            statusHtml = `<span class="tag-bye">輪空晉級 (不計勝場: ${realTeam})</span>`;
+          } else if (m.winner) {
+            statusHtml = `<span class="tag-completed">🎉 勝者：${m.winner}</span>`;
+          } else {
+            statusHtml = `<span class="tag-pending">⏳ 進行中 / 待定</span>`;
+          }
+
+          tr.innerHTML = `
+            <td><b>${m.dateStr}</b></td>
+            <td>${roundName}</td>
+            <td>對決 ${mIdx + 1}</td>
+            <td>${m.courtNo || '-'}</td>
+            <td>${m.team1}</td>
+            <td>${m.team2}</td>
+            <td>${statusHtml}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      });
+
+      if (thirdPlaceMatch && !(thirdPlaceMatch.team1.includes('BYE') && thirdPlaceMatch.team2.includes('BYE'))) {
+        if (selectedDate === 'ALL' || thirdPlaceMatch.dateStr === selectedDate) {
+          hasMatch = true;
+          const tr = document.createElement('tr');
+          let statusHtml = thirdPlaceMatch.winner 
+            ? `<span class="tag-completed">🥉 季軍：${thirdPlaceMatch.winner}</span>` 
+            : `<span class="tag-pending">⏳ 進行中 / 待定</span>`;
+
+          tr.innerHTML = `
+            <td><b>${thirdPlaceMatch.dateStr}</b></td>
+            <td>🥉 季軍賽</td>
+            <td>對決 1</td>
+            <td>${thirdPlaceMatch.courtNo || '-'}</td>
+            <td>${thirdPlaceMatch.team1}</td>
+            <td>${thirdPlaceMatch.team2}</td>
+            <td>${statusHtml}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      if (!hasMatch) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#999;">該日期無安排比賽或無資料</td></tr>';
+      }
+    }
+
+    // 渲染戰績排行榜（輪空不計勝場）
+    function renderLeaderboard() {
+      const tbody = document.getElementById('leaderboardTable');
+      const selectedDate = document.getElementById('leaderboardDateFilter').value;
+      tbody.innerHTML = '';
+
+      let stats = {};
+      registeredTeams.forEach(t => {
+        stats[t] = { win: 0, loss: 0, total: 0 };
+      });
+
+      let allMatches = [];
+      bracketData.forEach(r => allMatches.push(...r));
+      if (thirdPlaceMatch) allMatches.push(thirdPlaceMatch);
+
+      allMatches.forEach(m => {
+        let isDateMatched = (selectedDate === 'ALL' || m.dateStr === selectedDate);
+        let isRealMatch = !m.team1.includes('BYE') && !m.team2.includes('BYE') && !m.team1.includes('待定') && !m.team2.includes('待定');
+
+        if (isDateMatched && isRealMatch) {
+          if (m.winner && stats[m.winner]) {
+            stats[m.winner].win += 1;
+            stats[m.winner].total += 1;
+          }
+          if (m.loser && stats[m.loser]) {
+            stats[m.loser].loss += 1;
+            stats[m.loser].total += 1;
+          }
+        }
+      });
+
+      let sortedList = Object.keys(stats).map(t => {
+        let w = stats[t].win;
+        let l = stats[t].loss;
+        let total = stats[t].total;
+        let rate = total > 0 ? ((w / total) * 100).toFixed(1) : "0.0";
+        return { team: t, win: w, loss: l, total: total, rate: parseFloat(rate) };
+      });
+
+      sortedList.sort((a, b) => b.win - a.win || b.rate - a.rate);
+
+      sortedList.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        let rankBadge = index === 0 ? '🥇 1' : index === 1 ? '🥈 2' : index === 2 ? '🥉 3' : `${index + 1}`;
+        tr.innerHTML = `
+          <td class="rank-num">${rankBadge}</td>
+          <td><b>${item.team}</b></td>
+          <td style="color:#2e7d32; font-weight:bold;">${item.win}</td>
+          <td style="color:#c62828;">${item.loss}</td>
+          <td>${item.total}</td>
+          <td>${item.rate}%</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function drawSvgLines() {
+      const svg = document.getElementById('svgCanvas');
+      const wrapper = document.getElementById('bracketWrapper');
+      svg.innerHTML = '';
+
+      const wrapperRect = wrapper.getBoundingClientRect();
+      svg.setAttribute('width', wrapper.scrollWidth);
+      svg.setAttribute('height', wrapper.scrollHeight);
+
+      for (let r = 0; r < bracketData.length - 1; r++) {
+        let currentRound = bracketData[r];
+
+        currentRound.forEach((m, mIdx) => {
+          let currBox = document.getElementById(`box_R${r}_M${mIdx}`);
+          let nextMatchIdx = Math.floor(mIdx / 2);
+          let nextBox = document.getElementById(`box_R${r + 1}_M${nextMatchIdx}`);
+
+          if (currBox && nextBox && !currBox.classList.contains('hidden-bye-box')) {
+            let cRect = currBox.getBoundingClientRect();
+            let nRect = nextBox.getBoundingClientRect();
+
+            let startX = cRect.right - wrapperRect.left + wrapper.scrollLeft;
+            let startY = cRect.top + cRect.height / 2 - wrapperRect.top + wrapper.scrollTop;
+
+            let endX = nRect.left - wrapperRect.left + wrapper.scrollLeft;
+            let endY = nRect.top + nRect.height / 2 - wrapperRect.top + wrapper.scrollTop;
+
+            let midX = (startX + endX) / 2;
+            let pathD = `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
+
+            let path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', pathD);
+            path.setAttribute('fill', 'none');
+
+            if (m.winner) {
+              path.setAttribute('stroke', '#2e7d32');
+              path.setAttribute('stroke-width', '3');
+            } else {
+              path.setAttribute('stroke', '#b0bec5');
+              path.setAttribute('stroke-width', '2');
+              path.setAttribute('stroke-dasharray', '5,5');
+            }
+
+            svg.appendChild(path);
+          }
+        });
+      }
+    }
+
+    // --- 自動存檔與讀取機制 ---
+    function saveToLocalStorage() {
+      const dataToSave = {
+        playerListText: document.getElementById('playerListInput').value,
+        matchDate: document.getElementById('matchDateInput').value,
+        courtCount: document.getElementById('courtCountInput').value,
+        drawType: document.getElementById('drawTypeSelect').value,
+        bracketData: bracketData,
+        thirdPlaceMatch: thirdPlaceMatch,
+        registeredTeams: registeredTeams,
+        lastSaved: new Date().toLocaleTimeString()
+      };
+
+      localStorage.setItem('badminton_tournament_data', JSON.stringify(dataToSave));
+      document.getElementById('saveStatusText').innerText = `🟢 已自動存檔 (${dataToSave.lastSaved})`;
+    }
+
+    function loadFromLocalStorage() {
+      const saved = localStorage.getItem('badminton_tournament_data');
+      if (!saved) return;
+
+      try {
+        const parsed = JSON.parse(saved);
+        document.getElementById('playerListInput').value = parsed.playerListText || '';
+        document.getElementById('matchDateInput').value = parsed.matchDate || todayStr;
+        document.getElementById('courtCountInput').value = parsed.courtCount || 3;
+        document.getElementById('drawTypeSelect').value = parsed.drawType || 'random';
+
+        bracketData = parsed.bracketData || [];
+        thirdPlaceMatch = parsed.thirdPlaceMatch || null;
+        registeredTeams = parsed.registeredTeams || [];
+
+        if (bracketData.length > 0) {
+          updateDateFilters();
+          renderAll();
+          document.getElementById('saveStatusText').innerText = `🟢 已載入上次存檔紀錄 (${parsed.lastSaved || ''})`;
+        }
+      } catch (e) {
+        console.error("載入存檔失敗", e);
+      }
+    }
+
+    function clearData() {
+      if (confirm('確定要清空所有賽事資料與存檔嗎？')) {
+        localStorage.removeItem('badminton_tournament_data');
+        location.reload();
+      }
+    }
+
+    function escapeQuotes(str) {
+      return str.replace(/'/g, "\\'");
+    }
+
+    window.onresize = drawSvgLines;
+  </script>
+</body>
+</html>
