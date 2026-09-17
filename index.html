@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>羽球雙打樹狀圖系統 (當日賽事版)</title>
+  <title>羽球雙打樹狀圖系統 (多日期歷史存檔版)</title>
   <style>
     :root {
       --primary: #1b5e20;
@@ -112,8 +112,8 @@
 
       <div>
         <div class="form-group">
-          <label>📅 當天比賽日期：</label>
-          <input type="date" id="matchDateInput" onchange="updateMatchDates()">
+          <label>📅 當前記錄/比賽日期：</label>
+          <input type="date" id="matchDateInput">
         </div>
 
         <div class="form-group">
@@ -183,7 +183,7 @@
       <div>
         <span>🏆 隊伍戰績排行榜：</span>
         <select id="leaderboardDateFilter" class="filter-select" onchange="renderLeaderboard()">
-          <option value="ALL">顯示全部日期</option>
+          <option value="ALL">顯示全部日期（全賽事）</option>
         </select>
       </div>
     </div>
@@ -271,7 +271,7 @@
         }
       }
 
-      // 初始化樹狀對戰（日期均設為當前選擇日期）
+      // 初始化樹狀對戰
       bracketData = [];
       let round1Matches = [];
 
@@ -310,54 +310,36 @@
         thirdPlaceMatch = null;
       }
 
-      updateDateFilters();
       propagateWinners();
       renderAll();
       saveToLocalStorage();
     }
 
-    // 當修改日期時，同步更新全部比賽的日期
-    function updateMatchDates() {
-      const newDate = document.getElementById('matchDateInput').value || todayStr;
-      
-      bracketData.forEach(round => {
-        round.forEach(m => {
-          m.dateStr = newDate;
-        });
-      });
-
-      if (thirdPlaceMatch) {
-        thirdPlaceMatch.dateStr = newDate;
-      }
-
-      updateDateFilters();
-      renderAll();
-      saveToLocalStorage();
-    }
-
+    // 收集現有的所有對戰日期（用於日期選單）
     function updateDateFilters() {
       const historyFilter = document.getElementById('dateFilterSelect');
       const leaderboardFilter = document.getElementById('leaderboardDateFilter');
 
-      // 收集目前發生的日期（通常即當前日期）
       let dates = new Set();
-      bracketData.forEach(r => r.forEach(m => dates.add(m.dateStr)));
-      if (thirdPlaceMatch) dates.add(thirdPlaceMatch.dateStr);
+      bracketData.forEach(r => r.forEach(m => {
+        if (m.dateStr) dates.add(m.dateStr);
+      }));
+      if (thirdPlaceMatch && thirdPlaceMatch.dateStr) dates.add(thirdPlaceMatch.dateStr);
+
+      let historyVal = historyFilter.value || 'ALL';
+      let leaderVal = leaderboardFilter.value || 'ALL';
 
       let optionsHtml = '<option value="ALL">顯示全部日期</option>';
-      dates.forEach(d => {
+      Array.from(dates).sort().forEach(d => {
         optionsHtml += `<option value="${d}">${d}</option>`;
       });
 
       historyFilter.innerHTML = optionsHtml;
       leaderboardFilter.innerHTML = optionsHtml;
-      
-      // 預設切換為最新設定的日期
-      const currentDate = document.getElementById('matchDateInput').value;
-      if (dates.has(currentDate)) {
-        historyFilter.value = currentDate;
-        leaderboardFilter.value = currentDate;
-      }
+
+      // 保留當前選擇的篩選，若不存在則切換為全部
+      historyFilter.value = dates.has(historyVal) ? historyVal : 'ALL';
+      leaderboardFilter.value = dates.has(leaderVal) ? leaderVal : 'ALL';
     }
 
     function propagateWinners() {
@@ -431,9 +413,11 @@
       document.getElementById('championDisplay').style.display = displayBox ? 'block' : 'none';
     }
 
+    // 點擊決定勝負時，將比賽日期紀錄為「當前選取的日期」
     function toggleWinner(rIdx, mIdx, selectedTeam) {
       if (selectedTeam.includes('待定') || selectedTeam.includes('BYE')) return;
       let match = bracketData[rIdx][mIdx];
+      const currentDate = document.getElementById('matchDateInput').value || todayStr;
 
       if (match.winner === selectedTeam) {
         match.winner = null;
@@ -441,6 +425,7 @@
       } else {
         match.winner = selectedTeam;
         match.loser = (selectedTeam === match.team1) ? match.team2 : match.team1;
+        match.dateStr = currentDate; // 紀錄為當前選取的日期
       }
 
       propagateWinners();
@@ -450,6 +435,7 @@
 
     function toggleThirdPlaceWinner(selectedTeam) {
       if (!thirdPlaceMatch || selectedTeam.includes('待定') || selectedTeam.includes('BYE')) return;
+      const currentDate = document.getElementById('matchDateInput').value || todayStr;
 
       if (thirdPlaceMatch.winner === selectedTeam) {
         thirdPlaceMatch.winner = null;
@@ -457,6 +443,7 @@
       } else {
         thirdPlaceMatch.winner = selectedTeam;
         thirdPlaceMatch.loser = (selectedTeam === thirdPlaceMatch.team1) ? thirdPlaceMatch.team2 : thirdPlaceMatch.team1;
+        thirdPlaceMatch.dateStr = currentDate; // 紀錄為當前選取的日期
       }
 
       propagateWinners();
@@ -465,6 +452,7 @@
     }
 
     function renderAll() {
+      updateDateFilters();
       renderBracket();
       renderHistoryTable();
       renderLeaderboard();
@@ -518,7 +506,7 @@
           matchBox.innerHTML = `
             ${courtBadgeHtml}
             <div>
-              <span class="date-badge">📅 ${m.dateStr}</span>
+              <span class="date-badge">📅 ${m.dateStr || '-'}</span>
               <span style="font-size:0.75rem; color:#888;">對決 ${mIdx + 1}</span>
             </div>
             
@@ -568,7 +556,7 @@
           thirdBox.innerHTML = `
             ${thirdCourtBadgeHtml}
             <div>
-              <span class="date-badge">📅 ${thirdPlaceMatch.dateStr}</span>
+              <span class="date-badge">📅 ${thirdPlaceMatch.dateStr || '-'}</span>
               <span style="font-size:0.75rem; color:#8d6e63; font-weight:bold;">🥉 季軍爭奪戰</span>
             </div>
             
@@ -578,7 +566,7 @@
               ${isT1Winner ? '<span class="status-tag">勝出</span>' : ''}
             </div>
 
-            <div class="team-row ${isT2Winner ? 'winner' : ''} ${isT2Loser ? 'loser' : ''} ${thirdPlaceMatch.team2.includes('BYE') ? 'bye' : ''} ${t2Disabled ? 'disabled' : ''}" 
+            <div class="team-row ${isT2Winner ? 'winner' : ''} ${isT2Loser ? 'loser' : ''} ${thirdPlaceMatch.team2.includes('BYE') ? 'bye' : ''} ${t1Disabled ? 'disabled' : ''}" 
                  onclick="toggleThirdPlaceWinner('${escapeQuotes(thirdPlaceMatch.team2)}')">
               <span class="team-name">👥 ${thirdPlaceMatch.team2}</span>
               ${isT2Winner ? '<span class="status-tag">勝出</span>' : ''}
@@ -625,7 +613,7 @@
           }
 
           tr.innerHTML = `
-            <td><b>${m.dateStr}</b></td>
+            <td><b>${m.dateStr || '-'}</b></td>
             <td>${roundName}</td>
             <td>對決 ${mIdx + 1}</td>
             <td>${m.courtNo || '-'}</td>
@@ -646,7 +634,7 @@
             : `<span class="tag-pending">⏳ 進行中 / 待定</span>`;
 
           tr.innerHTML = `
-            <td><b>${thirdPlaceMatch.dateStr}</b></td>
+            <td><b>${thirdPlaceMatch.dateStr || '-'}</b></td>
             <td>🥉 季軍賽</td>
             <td>對決 1</td>
             <td>${thirdPlaceMatch.courtNo || '-'}</td>
@@ -801,7 +789,6 @@
         registeredTeams = parsed.registeredTeams || [];
 
         if (bracketData.length > 0) {
-          updateDateFilters();
           renderAll();
           document.getElementById('saveStatusText').innerText = `🟢 已載入上次存檔紀錄 (${parsed.lastSaved || ''})`;
         }
