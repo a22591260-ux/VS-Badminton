@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>羽球雙打樹狀圖系統 (多日期歷史存檔版)</title>
+  <title>羽球雙打樹狀圖系統 (歷史紀錄典藏版)</title>
   <style>
     :root {
       --primary: #1b5e20;
@@ -61,8 +61,8 @@
     
     .team-row.winner { background: #2e7d32 !important; color: white !important; font-weight: bold; border-color: #1b5e20 !important; }
     .team-row.loser { opacity: 0.5; background: #eee; }
-    .team-row.bye { color: #888; font-style: italic; cursor: default; }
-    .team-row.disabled { cursor: default; }
+    .team-row.bye { color: #888; font-style: italic; cursor: not-allowed; opacity: 0.7; }
+    .team-row.disabled { cursor: not-allowed !important; opacity: 0.6; background: #f0f0f0; }
 
     .team-name { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status-tag { font-size: 0.75rem; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
@@ -87,6 +87,10 @@
 
     .filter-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-weight: bold; color: var(--primary); }
     .rank-num { font-weight: bold; color: var(--accent); font-size: 1rem; }
+
+    /* 日期歷史卡片區塊 */
+    .date-block { border: 1px solid #c8e6c9; border-radius: 8px; padding: 15px; margin-bottom: 20px; background: #fafafa; }
+    .date-block-header { font-size: 1.1rem; font-weight: bold; color: var(--primary); padding-bottom: 8px; margin-bottom: 10px; border-bottom: 2px solid #a5d6a7; display: flex; justify-content: space-between; }
   </style>
 </head>
 <body>
@@ -148,42 +152,13 @@
     <div id="bracketContainer" class="bracket-container"></div>
   </div>
 
-  <!-- 對戰歷史一覽表 -->
-  <div class="table-card">
-    <div class="table-title">
-      <div>
-        <span>📅 對戰紀錄表：</span>
-        <select id="dateFilterSelect" class="filter-select" onchange="renderHistoryTable()">
-          <option value="ALL">顯示全部日期</option>
-        </select>
-      </div>
-      <button class="btn btn-secondary" onclick="window.print()" style="font-size:0.85rem; padding:5px 12px;">🖨️ 列印 / 匯出紀錄表</button>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>比賽日期</th>
-          <th>輪次</th>
-          <th>對決</th>
-          <th>場地</th>
-          <th>隊伍 1</th>
-          <th>隊伍 2</th>
-          <th>狀態 / 勝出者</th>
-        </tr>
-      </thead>
-      <tbody id="matchHistoryTable">
-        <tr><td colspan="7" style="text-align:center; color:#999;">尚未生成賽事資料</td></tr>
-      </tbody>
-    </table>
-  </div>
-
   <!-- 即時戰績排行榜 -->
   <div class="table-card">
     <div class="table-title">
       <div>
         <span>🏆 隊伍戰績排行榜：</span>
         <select id="leaderboardDateFilter" class="filter-select" onchange="renderLeaderboard()">
-          <option value="ALL">顯示全部日期（全賽事）</option>
+          <option value="ALL">顯示全部日期（全賽事總計）</option>
         </select>
       </div>
     </div>
@@ -202,6 +177,17 @@
         <tr><td colspan="6" style="text-align:center; color:#999;">尚未生成賽事資料</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <!-- 按日期分類的歷史紀錄區塊 -->
+  <div class="table-card">
+    <div class="table-title">
+      <span>📅 歷年/各日期賽事歷史紀錄</span>
+      <button class="btn btn-secondary" onclick="window.print()" style="font-size:0.85rem; padding:5px 12px;">🖨️ 列印 / 匯出總紀錄表</button>
+    </div>
+    <div id="dateHistoryContainer">
+      <p style="text-align:center; color:#999; padding:20px;">尚無比賽紀錄</p>
+    </div>
   </div>
 
   <script>
@@ -315,9 +301,14 @@
       saveToLocalStorage();
     }
 
-    // 收集現有的所有對戰日期（用於日期選單）
+    // 判斷該名稱是否為待定或輪空
+    function isPendingOrBye(name) {
+      if (!name) return true;
+      return name.includes('待定') || name.includes('BYE');
+    }
+
+    // 更新選單日期
     function updateDateFilters() {
-      const historyFilter = document.getElementById('dateFilterSelect');
       const leaderboardFilter = document.getElementById('leaderboardDateFilter');
 
       let dates = new Set();
@@ -326,19 +317,14 @@
       }));
       if (thirdPlaceMatch && thirdPlaceMatch.dateStr) dates.add(thirdPlaceMatch.dateStr);
 
-      let historyVal = historyFilter.value || 'ALL';
       let leaderVal = leaderboardFilter.value || 'ALL';
 
-      let optionsHtml = '<option value="ALL">顯示全部日期</option>';
-      Array.from(dates).sort().forEach(d => {
+      let optionsHtml = '<option value="ALL">顯示全部日期（全賽事總計）</option>';
+      Array.from(dates).sort().reverse().forEach(d => {
         optionsHtml += `<option value="${d}">${d}</option>`;
       });
 
-      historyFilter.innerHTML = optionsHtml;
       leaderboardFilter.innerHTML = optionsHtml;
-
-      // 保留當前選擇的篩選，若不存在則切換為全部
-      historyFilter.value = dates.has(historyVal) ? historyVal : 'ALL';
       leaderboardFilter.value = dates.has(leaderVal) ? leaderVal : 'ALL';
     }
 
@@ -350,10 +336,10 @@
           if (m.team1 === 'BYE (輪空)' && m.team2 === 'BYE (輪空)') {
             m.winner = 'BYE (輪空)';
             m.loser = 'BYE (輪空)';
-          } else if (m.team2 === 'BYE (輪空)' && m.team1 !== 'BYE (輪空)' && !m.team1.includes('待定')) {
+          } else if (m.team2 === 'BYE (輪空)' && !isPendingOrBye(m.team1)) {
             m.winner = m.team1;
             m.loser = 'BYE (輪空)';
-          } else if (m.team1 === 'BYE (輪空)' && m.team2 !== 'BYE (輪空)' && !m.team2.includes('待定')) {
+          } else if (m.team1 === 'BYE (輪空)' && !isPendingOrBye(m.team2)) {
             m.winner = m.team2;
             m.loser = 'BYE (輪空)';
           }
@@ -386,9 +372,9 @@
           if (m2.loser) thirdPlaceMatch.team2 = m2.loser;
           else thirdPlaceMatch.team2 = '準決賽 L2 待定';
 
-          if (thirdPlaceMatch.team1 === 'BYE (輪空)' && thirdPlaceMatch.team2 !== 'BYE (輪空)' && !thirdPlaceMatch.team2.includes('待定')) {
+          if (thirdPlaceMatch.team1 === 'BYE (輪空)' && !isPendingOrBye(thirdPlaceMatch.team2)) {
             thirdPlaceMatch.winner = thirdPlaceMatch.team2;
-          } else if (thirdPlaceMatch.team2 === 'BYE (輪空)' && thirdPlaceMatch.team1 !== 'BYE (輪空)' && !thirdPlaceMatch.team1.includes('待定')) {
+          } else if (thirdPlaceMatch.team2 === 'BYE (輪空)' && !isPendingOrBye(thirdPlaceMatch.team1)) {
             thirdPlaceMatch.winner = thirdPlaceMatch.team1;
           }
         }
@@ -397,12 +383,12 @@
       let finalMatch = bracketData[bracketData.length - 1][0];
       let displayBox = false;
 
-      if (finalMatch && finalMatch.winner && finalMatch.winner !== 'BYE (輪空)') {
+      if (finalMatch && finalMatch.winner && !isPendingOrBye(finalMatch.winner)) {
         document.getElementById('championName').innerText = finalMatch.winner;
         displayBox = true;
       }
 
-      if (thirdPlaceMatch && thirdPlaceMatch.winner && thirdPlaceMatch.winner !== 'BYE (輪空)') {
+      if (thirdPlaceMatch && thirdPlaceMatch.winner && !isPendingOrBye(thirdPlaceMatch.winner)) {
         document.getElementById('thirdPlaceDisplay').style.display = 'inline-block';
         document.getElementById('thirdPlaceName').innerText = thirdPlaceMatch.winner;
         displayBox = true;
@@ -413,9 +399,10 @@
       document.getElementById('championDisplay').style.display = displayBox ? 'block' : 'none';
     }
 
-    // 點擊決定勝負時，將比賽日期紀錄為「當前選取的日期」
+    // 點擊決定勝負：待定人員不可點擊
     function toggleWinner(rIdx, mIdx, selectedTeam) {
-      if (selectedTeam.includes('待定') || selectedTeam.includes('BYE')) return;
+      if (isPendingOrBye(selectedTeam)) return; // 禁止點擊「待定雙打」或「BYE」
+
       let match = bracketData[rIdx][mIdx];
       const currentDate = document.getElementById('matchDateInput').value || todayStr;
 
@@ -434,7 +421,8 @@
     }
 
     function toggleThirdPlaceWinner(selectedTeam) {
-      if (!thirdPlaceMatch || selectedTeam.includes('待定') || selectedTeam.includes('BYE')) return;
+      if (!thirdPlaceMatch || isPendingOrBye(selectedTeam)) return; // 禁止點擊待定
+
       const currentDate = document.getElementById('matchDateInput').value || todayStr;
 
       if (thirdPlaceMatch.winner === selectedTeam) {
@@ -443,7 +431,7 @@
       } else {
         thirdPlaceMatch.winner = selectedTeam;
         thirdPlaceMatch.loser = (selectedTeam === thirdPlaceMatch.team1) ? thirdPlaceMatch.team2 : thirdPlaceMatch.team1;
-        thirdPlaceMatch.dateStr = currentDate; // 紀錄為當前選取的日期
+        thirdPlaceMatch.dateStr = currentDate;
       }
 
       propagateWinners();
@@ -454,7 +442,7 @@
     function renderAll() {
       updateDateFilters();
       renderBracket();
-      renderHistoryTable();
+      renderHistoryByDates();
       renderLeaderboard();
     }
 
@@ -482,7 +470,7 @@
             matchBox.classList.add('hidden-bye-box');
           }
 
-          let isReady = !m.team1.includes('待定') && !m.team2.includes('待定') && !m.team1.includes('BYE') && !m.team2.includes('BYE') && !m.winner;
+          let isReady = !isPendingOrBye(m.team1) && !isPendingOrBye(m.team2) && !m.winner;
           let courtBadgeHtml = '';
 
           if (isReady) {
@@ -495,13 +483,13 @@
             m.courtNo = '-';
           }
 
-          let isT1Winner = (m.winner === m.team1 && !m.team1.includes('待定') && !m.team1.includes('BYE'));
-          let isT2Winner = (m.winner === m.team2 && !m.team2.includes('待定') && !m.team2.includes('BYE'));
+          let isT1Winner = (m.winner === m.team1 && !isPendingOrBye(m.team1));
+          let isT2Winner = (m.winner === m.team2 && !isPendingOrBye(m.team2));
           let isT1Loser = (m.loser === m.team1);
           let isT2Loser = (m.loser === m.team2);
 
-          let t1Disabled = m.team1.includes('待定') || m.team1.includes('BYE');
-          let t2Disabled = m.team2.includes('待定') || m.team2.includes('BYE');
+          let t1Disabled = isPendingOrBye(m.team1);
+          let t2Disabled = isPendingOrBye(m.team2);
 
           matchBox.innerHTML = `
             ${courtBadgeHtml}
@@ -532,7 +520,7 @@
           thirdBox.className = 'match-box third-place-box';
           thirdBox.id = 'box_THIRD';
 
-          let isThirdReady = !thirdPlaceMatch.team1.includes('待定') && !thirdPlaceMatch.team2.includes('待定') && !thirdPlaceMatch.team1.includes('BYE') && !thirdPlaceMatch.team2.includes('BYE') && !thirdPlaceMatch.winner;
+          let isThirdReady = !isPendingOrBye(thirdPlaceMatch.team1) && !isPendingOrBye(thirdPlaceMatch.team2) && !thirdPlaceMatch.winner;
           let thirdCourtBadgeHtml = '';
 
           if (isThirdReady) {
@@ -545,13 +533,13 @@
             thirdPlaceMatch.courtNo = '-';
           }
 
-          let isT1Winner = (thirdPlaceMatch.winner === thirdPlaceMatch.team1 && !thirdPlaceMatch.team1.includes('待定') && !thirdPlaceMatch.team1.includes('BYE'));
-          let isT2Winner = (thirdPlaceMatch.winner === thirdPlaceMatch.team2 && !thirdPlaceMatch.team2.includes('待定') && !thirdPlaceMatch.team2.includes('BYE'));
+          let isT1Winner = (thirdPlaceMatch.winner === thirdPlaceMatch.team1 && !isPendingOrBye(thirdPlaceMatch.team1));
+          let isT2Winner = (thirdPlaceMatch.winner === thirdPlaceMatch.team2 && !isPendingOrBye(thirdPlaceMatch.team2));
           let isT1Loser = (thirdPlaceMatch.loser === thirdPlaceMatch.team1);
           let isT2Loser = (thirdPlaceMatch.loser === thirdPlaceMatch.team2);
 
-          let t1Disabled = thirdPlaceMatch.team1.includes('待定') || thirdPlaceMatch.team1.includes('BYE');
-          let t2Disabled = thirdPlaceMatch.team2.includes('待定') || thirdPlaceMatch.team2.includes('BYE');
+          let t1Disabled = isPendingOrBye(thirdPlaceMatch.team1);
+          let t2Disabled = isPendingOrBye(thirdPlaceMatch.team2);
 
           thirdBox.innerHTML = `
             ${thirdCourtBadgeHtml}
@@ -566,7 +554,7 @@
               ${isT1Winner ? '<span class="status-tag">勝出</span>' : ''}
             </div>
 
-            <div class="team-row ${isT2Winner ? 'winner' : ''} ${isT2Loser ? 'loser' : ''} ${thirdPlaceMatch.team2.includes('BYE') ? 'bye' : ''} ${t1Disabled ? 'disabled' : ''}" 
+            <div class="team-row ${isT2Winner ? 'winner' : ''} ${isT2Loser ? 'loser' : ''} ${thirdPlaceMatch.team2.includes('BYE') ? 'bye' : ''} ${t2Disabled ? 'disabled' : ''}" 
                  onclick="toggleThirdPlaceWinner('${escapeQuotes(thirdPlaceMatch.team2)}')">
               <span class="team-name">👥 ${thirdPlaceMatch.team2}</span>
               ${isT2Winner ? '<span class="status-tag">勝出</span>' : ''}
@@ -582,13 +570,13 @@
       setTimeout(drawSvgLines, 50);
     }
 
-    // 渲染對戰歷史一覽表
-    function renderHistoryTable() {
-      const tbody = document.getElementById('matchHistoryTable');
-      const selectedDate = document.getElementById('dateFilterSelect').value;
-      tbody.innerHTML = '';
+    // 依據各個日期分別彙整並呈現歷史紀錄表
+    function renderHistoryByDates() {
+      const container = document.getElementById('dateHistoryContainer');
+      container.innerHTML = '';
 
-      let hasMatch = false;
+      // 收集所有出現過的日期
+      let matchesByDate = {};
 
       bracketData.forEach((roundMatches, rIdx) => {
         let roundName = `第 ${rIdx + 1} 輪`;
@@ -597,58 +585,94 @@
 
         roundMatches.forEach((m, mIdx) => {
           if (m.team1 === 'BYE (輪空)' && m.team2 === 'BYE (輪空)') return;
-          if (selectedDate !== 'ALL' && m.dateStr !== selectedDate) return;
+          let d = m.dateStr || '未知日期';
 
-          hasMatch = true;
-          const tr = document.createElement('tr');
+          if (!matchesByDate[d]) matchesByDate[d] = [];
+          matchesByDate[d].push({
+            roundName: roundName,
+            matchNum: `對決 ${mIdx + 1}`,
+            courtNo: m.courtNo || '-',
+            team1: m.team1,
+            team2: m.team2,
+            winner: m.winner,
+            loser: m.loser
+          });
+        });
+      });
+
+      if (thirdPlaceMatch && !(thirdPlaceMatch.team1.includes('BYE') && thirdPlaceMatch.team2.includes('BYE'))) {
+        let d = thirdPlaceMatch.dateStr || '未知日期';
+        if (!matchesByDate[d]) matchesByDate[d] = [];
+        matchesByDate[d].push({
+          roundName: '🥉 季軍賽',
+          matchNum: '對決 1',
+          courtNo: thirdPlaceMatch.courtNo || '-',
+          team1: thirdPlaceMatch.team1,
+          team2: thirdPlaceMatch.team2,
+          winner: thirdPlaceMatch.winner,
+          loser: thirdPlaceMatch.loser
+        });
+      }
+
+      let datesSorted = Object.keys(matchesByDate).sort().reverse();
+
+      if (datesSorted.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:#999; padding:20px;">尚無比賽紀錄</p>';
+        return;
+      }
+
+      datesSorted.forEach(date => {
+        const dateBlock = document.createElement('div');
+        dateBlock.className = 'date-block';
+
+        let rowsHtml = '';
+        matchesByDate[date].forEach(m => {
           let statusHtml = '';
-
           if (m.team1.includes('BYE') || m.team2.includes('BYE')) {
             let realTeam = m.team1.includes('BYE') ? m.team2 : m.team1;
-            statusHtml = `<span class="tag-bye">輪空晉級 (不計勝場: ${realTeam})</span>`;
+            statusHtml = `<span class="tag-bye">輪空晉級 (${realTeam})</span>`;
           } else if (m.winner) {
             statusHtml = `<span class="tag-completed">🎉 勝者：${m.winner}</span>`;
           } else {
             statusHtml = `<span class="tag-pending">⏳ 進行中 / 待定</span>`;
           }
 
-          tr.innerHTML = `
-            <td><b>${m.dateStr || '-'}</b></td>
-            <td>${roundName}</td>
-            <td>對決 ${mIdx + 1}</td>
-            <td>${m.courtNo || '-'}</td>
-            <td>${m.team1}</td>
-            <td>${m.team2}</td>
-            <td>${statusHtml}</td>
+          rowsHtml += `
+            <tr>
+              <td>${m.roundName}</td>
+              <td>${m.matchNum}</td>
+              <td>${m.courtNo}</td>
+              <td>${m.team1}</td>
+              <td>${m.team2}</td>
+              <td>${statusHtml}</td>
+            </tr>
           `;
-          tbody.appendChild(tr);
         });
+
+        dateBlock.innerHTML = `
+          <div class="date-block-header">
+            <span>📅 日期：${date}</span>
+            <span style="font-size:0.85rem; color:#666;">共 ${matchesByDate[date].length} 場賽事安排</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>輪次</th>
+                <th>對決</th>
+                <th>場地</th>
+                <th>隊伍 1</th>
+                <th>隊伍 2</th>
+                <th>比賽狀態 / 勝出者</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        `;
+
+        container.appendChild(dateBlock);
       });
-
-      if (thirdPlaceMatch && !(thirdPlaceMatch.team1.includes('BYE') && thirdPlaceMatch.team2.includes('BYE'))) {
-        if (selectedDate === 'ALL' || thirdPlaceMatch.dateStr === selectedDate) {
-          hasMatch = true;
-          const tr = document.createElement('tr');
-          let statusHtml = thirdPlaceMatch.winner 
-            ? `<span class="tag-completed">🥉 季軍：${thirdPlaceMatch.winner}</span>` 
-            : `<span class="tag-pending">⏳ 進行中 / 待定</span>`;
-
-          tr.innerHTML = `
-            <td><b>${thirdPlaceMatch.dateStr || '-'}</b></td>
-            <td>🥉 季軍賽</td>
-            <td>對決 1</td>
-            <td>${thirdPlaceMatch.courtNo || '-'}</td>
-            <td>${thirdPlaceMatch.team1}</td>
-            <td>${thirdPlaceMatch.team2}</td>
-            <td>${statusHtml}</td>
-          `;
-          tbody.appendChild(tr);
-        }
-      }
-
-      if (!hasMatch) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#999;">該日期無安排比賽或無資料</td></tr>';
-      }
     }
 
     // 渲染戰績排行榜（輪空不計勝場）
@@ -668,7 +692,7 @@
 
       allMatches.forEach(m => {
         let isDateMatched = (selectedDate === 'ALL' || m.dateStr === selectedDate);
-        let isRealMatch = !m.team1.includes('BYE') && !m.team2.includes('BYE') && !m.team1.includes('待定') && !m.team2.includes('待定');
+        let isRealMatch = !isPendingOrBye(m.team1) && !isPendingOrBye(m.team2);
 
         if (isDateMatched && isRealMatch) {
           if (m.winner && stats[m.winner]) {
